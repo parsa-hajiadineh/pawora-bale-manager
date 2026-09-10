@@ -10,7 +10,9 @@ import typer
 from sqlalchemy.orm import Session
 
 from bale_inviter.adapters.bale import BaleConfigError
-from bale_inviter.adapters.factory import create_bale_adapter
+from bale_inviter.adapters.dry_run import DryRunAdapter
+from bale_inviter.adapters.factory import create_bale_adapter, maybe_dry_run
+from bale_inviter.adapters.fake import FakeBaleAdapter
 from bale_inviter.adapters.telegram import login_telegram_session
 from bale_inviter.config import get_settings
 from bale_inviter.database.session import create_db_engine, create_session_factory, init_db
@@ -21,7 +23,9 @@ from bale_inviter.queue.worker import build_worker
 from bale_inviter.reporting.service import ReportingService
 from bale_inviter.services.account_check import AccountCheckService
 from bale_inviter.services.bot_runtime import BotRuntime
+from bale_inviter.services.export import ExportService
 from bale_inviter.services.invite import InviteService
+from bale_inviter.services.plan import PlanService
 
 app = typer.Typer(help="Invite Excel contacts to a Telegram group by phone (user session, not a bot).")
 
@@ -48,13 +52,25 @@ def _init() -> None:
     setup_logging(settings.log_level, settings.log_dir)
 
 
-def _adapter_or_exit():
+def _adapter_or_exit(*, dry_run: bool = False, allow_checks: bool = True):
     settings = get_settings()
+    if (dry_run or settings.dry_run) and not allow_checks and not _has_messenger_credentials(settings):
+        return settings, DryRunAdapter(FakeBaleAdapter(), allow_checks=False)
     try:
-        return settings, create_bale_adapter(settings)
+        adapter = create_bale_adapter(settings)
     except BaleConfigError as exc:
         typer.secho(str(exc), fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
+    return settings, maybe_dry_run(adapter, settings, dry_run=dry_run, allow_checks=allow_checks)
+
+
+def _has_messenger_credentials(settings) -> bool:
+    if (settings.messenger_platform or settings.bale_adapter or "telegram").strip().lower() in {
+        "http",
+        "bale",
+    }:
+        return bool((settings.bale_bot_token or "").strip())
+    return bool(int(settings.telegram_api_id or 0) and (settings.telegram_api_hash or "").strip())
 
 
 @app.command("init-db")
@@ -146,18 +162,52 @@ def ping_bale() -> None:
         typer.echo("GROUP_ID is empty. Put the Telegram group id or @username in .env")
 
 
+@app.command("plan")
+def plan() -> None:
+    """Show what would be queued after import. No Telegram login required."""
+    with session_scope() as session:
+        preview = PlanService(session).build()
+    typer.echo("Invite plan (no jobs queued)")
+    for key, value in preview.as_dict().items():
+        typer.echo(f"  {key}: {value}")
+
+
+@app.command("export-report")
+def export_report(
+    output: Path | None = typer.Option(None, "--output", "-o", help="CSV path; default is exports/contacts-....csv"),
+) -> None:
+    """Write a local CSV of contact statuses for Excel."""
+    with session_scope() as session:
+        result = ExportService(session).export_csv(output)
+    typer.echo(f"exported {result.rows} rows to {result.path}")
+
+
 @app.command("run-invites")
-def run_invites() -> None:
+def run_invites(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Check phones if logged in; do not invite, DM, or change invite status"),
+    skip_checks: bool = typer.Option(False, "--skip-checks", help="Skip CHECK_BALE_ACCOUNT jobs"),
+    skip_invites: bool = typer.Option(False, "--skip-invites", help="Skip DIRECT_INVITE / SEND_INVITE_LINK jobs"),
+    check_joins: bool = typer.Option(True, "--check-joins/--no-check-joins", help="After invites, queue join-status checks"),
+) -> None:
     """Check phones on Telegram, then invite those with an account. Not one-by-one manual sends."""
-    settings, adapter = _adapter_or_exit()
-    with session_scope() as session:
-        checks = AccountCheckService(session, adapter, QueueService(session, settings)).enqueue_pending()
-    typer.echo(f"queued account checks: {checks.queued}")
-    _drain_jobs(adapter, settings)
-    with session_scope() as session:
-        invites = InviteService(session, adapter, QueueService(session, settings), settings).enqueue_pending()
-    typer.echo(f"queued direct invites: {invites.queued_direct}")
-    _drain_jobs(adapter, settings)
+    settings, adapter = _adapter_or_exit(dry_run=dry_run, allow_checks=not skip_checks)
+    if dry_run or settings.dry_run:
+        typer.echo("dry-run: invites and DMs will not be sent")
+    if not skip_checks:
+        with session_scope() as session:
+            checks = AccountCheckService(session, adapter, QueueService(session, settings)).enqueue_pending()
+        typer.echo(f"queued account checks: {checks.queued}")
+        _drain_jobs(adapter, settings)
+    if not skip_invites:
+        with session_scope() as session:
+            invites = InviteService(session, adapter, QueueService(session, settings), settings).enqueue_pending()
+        typer.echo(f"queued direct invites: {invites.queued_direct}")
+        _drain_jobs(adapter, settings)
+    if check_joins:
+        with session_scope() as session:
+            joins = InviteService(session, adapter, QueueService(session, settings), settings).enqueue_join_checks()
+        typer.echo(f"queued join checks: {joins.queued_join}")
+        _drain_jobs(adapter, settings)
     typer.echo("invite run finished. Use: python -m bale_inviter report")
 
 
@@ -201,6 +251,24 @@ def enqueue_account_checks(
                 f"queued: {result.queued}",
                 f"skipped_duplicate: {result.skipped_duplicate}",
                 f"without_user_id: {result.skipped_no_user_id}",
+            ]
+        )
+    )
+
+
+@app.command("enqueue-join-checks")
+def enqueue_join_checks() -> None:
+    """Queue CHECK_JOIN_STATUS for invited contacts that are not JOINED yet."""
+    settings, adapter = _adapter_or_exit()
+    with session_scope() as session:
+        queue = QueueService(session, settings)
+        result = InviteService(session, adapter, queue, settings).enqueue_join_checks()
+    typer.echo(
+        "\n".join(
+            [
+                f"eligible_join: {result.eligible_join}",
+                f"queued_join: {result.queued_join}",
+                f"skipped_duplicate: {result.skipped_duplicate}",
             ]
         )
     )

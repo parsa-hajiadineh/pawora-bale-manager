@@ -93,3 +93,25 @@ def test_worker_runs_direct_invite_and_join_check(session, settings) -> None:
     session.refresh(contact)
     assert contact.join_status is JoinStatus.JOINED
     assert queue.jobs.list_by_type(JobType.DIRECT_INVITE)[0].status is JobStatus.COMPLETED
+
+
+def test_enqueue_join_checks_for_invited_contacts(session, settings) -> None:
+    invited = _add_contact(session, "7", "107")
+    invited.direct_invite_status = DirectInviteStatus.SUCCESS
+    linked = _add_contact(session, "8", "108")
+    linked.invite_link_status = InviteLinkStatus.SENT
+    joined = _add_contact(session, "9", "109")
+    joined.direct_invite_status = DirectInviteStatus.SUCCESS
+    joined.join_status = JoinStatus.JOINED
+    pending = _add_contact(session, "0", "100")
+    session.flush()
+    adapter = FakeBaleAdapter()
+    service = InviteService(session, adapter, QueueService(session, settings), settings)
+    result = service.enqueue_join_checks()
+    assert result.eligible_join == 2
+    assert result.queued_join == 2
+    jobs = QueueService(session, settings).jobs.list_by_type(JobType.CHECK_JOIN_STATUS)
+    ids = {job.contact_id for job in jobs}
+    assert ids == {invited.id, linked.id}
+    assert pending.id not in ids
+    assert joined.id not in ids

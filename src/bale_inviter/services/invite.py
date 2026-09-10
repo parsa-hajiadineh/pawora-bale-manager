@@ -13,6 +13,7 @@ from bale_inviter.adapters.bale import (
     JoinStatusResult,
     RetryableBaleError,
 )
+from bale_inviter.adapters.dry_run import is_dry_run_result
 from bale_inviter.config import Settings, get_settings
 from bale_inviter.database.models import Contact
 from bale_inviter.database.repositories import AppStateRepository, ContactRepository
@@ -35,10 +36,12 @@ CONTACT_SHARE_KEYBOARD = {
 class EnqueueInviteResult:
     queued_direct: int = 0
     queued_link: int = 0
+    queued_join: int = 0
     skipped_duplicate: int = 0
     skipped_no_user_id: int = 0
     eligible_direct: int = 0
     eligible_link: int = 0
+    eligible_join: int = 0
 
 
 class InviteService:
@@ -87,6 +90,23 @@ class InviteService:
                 f"link={result.queued_link} duplicate={result.skipped_duplicate}"
             ),
             operation="ENQUEUE_INVITES",
+        )
+        return result
+
+    def enqueue_join_checks(self) -> EnqueueInviteResult:
+        result = EnqueueInviteResult()
+        eligible = self.contacts.list_for_join_check()
+        result.eligible_join = len(eligible)
+        for contact in eligible:
+            try:
+                self.queue.enqueue_for_contact(JobType.CHECK_JOIN_STATUS, contact.id)
+                result.queued_join += 1
+            except DuplicateJobError:
+                result.skipped_duplicate += 1
+        log_event(
+            logging.INFO,
+            f"enqueued join checks queued={result.queued_join} duplicate={result.skipped_duplicate}",
+            operation="CHECK_JOIN_STATUS",
         )
         return result
 
@@ -146,6 +166,14 @@ class InviteService:
                 error=str(exc),
             )
             raise
+        if is_dry_run_result(result.detail):
+            log_event(
+                logging.INFO,
+                f"dry-run skipped persisting invite phone={mask_phone(phone)}",
+                operation="DIRECT_INVITE",
+                contact_id=contact.id,
+            )
+            return result
         self._apply_direct_result(contact, result)
         if result.status is DirectInviteStatus.FAILED and self._strategy() == "auto":
             self._enqueue_safe(JobType.SEND_INVITE_LINK, contact.id)
@@ -175,6 +203,14 @@ class InviteService:
             self.contact_service.record_attempt(contact, str(exc))
             self.contact_service.set_invite_link_status(contact, InviteLinkStatus.FAILED)
             raise
+        if is_dry_run_result(result.detail):
+            log_event(
+                logging.INFO,
+                f"dry-run skipped persisting invite link phone={mask_phone(phone)}",
+                operation="SEND_INVITE_LINK",
+                contact_id=contact.id,
+            )
+            return result
         error_message = None if result.status is InviteLinkStatus.SENT else result.detail
         self.contact_service.record_attempt(contact, error_message)
         self.contact_service.set_invite_link_status(contact, result.status)
@@ -193,6 +229,14 @@ class InviteService:
         phone = contact.normalized_phone or contact.phone
         group_id = (self.settings.group_id or "").strip()
         result = await self.adapter.check_join_status(phone, group_id, contact.bale_user_id)
+        if is_dry_run_result(result.detail):
+            log_event(
+                logging.INFO,
+                f"dry-run skipped persisting join check phone={mask_phone(phone)}",
+                operation="CHECK_JOIN_STATUS",
+                contact_id=contact.id,
+            )
+            return result
         error_message = None if result.status is JoinStatus.JOINED else result.detail
         self.contact_service.record_attempt(contact, error_message)
         self.contact_service.set_join_status(contact, result.status)

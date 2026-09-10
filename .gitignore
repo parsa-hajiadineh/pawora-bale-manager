@@ -27,6 +27,8 @@ logs/*
 # Contact files must stay out of git
 imports/*
 !imports/.gitkeep
+exports/*
+!exports/.gitkeep
 *.xlsx
 *.xls
 *.csv

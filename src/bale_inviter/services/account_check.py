@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from bale_inviter.adapters.bale import BaleAdapter, BaleAccountCheckResult, RetryableBaleError
+from bale_inviter.adapters.dry_run import is_dry_run_result
 from bale_inviter.database.models import Contact
 from bale_inviter.database.repositories import AppStateRepository, ContactRepository
 from bale_inviter.domain.enums import BaleAccountStatus, JobType
@@ -105,6 +106,14 @@ class AccountCheckService:
             )
             raise
 
+        if is_dry_run_result(check.detail):
+            log_event(
+                logging.INFO,
+                f"dry-run skipped persisting account check phone={mask_phone(phone)}",
+                operation="CHECK_BALE_ACCOUNT",
+                contact_id=contact.id,
+            )
+            return check
         self._apply_result(contact, check)
         return check
 

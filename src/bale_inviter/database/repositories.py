@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from bale_inviter.database.models import AppState, Contact, ImportBatch, Job, utcnow
@@ -111,6 +111,22 @@ class ContactRepository:
                 Contact.join_status != JoinStatus.JOINED,
                 Contact.direct_invite_status != DirectInviteStatus.SUCCESS,
                 Contact.invite_link_status.in_((InviteLinkStatus.NOT_SENT, InviteLinkStatus.FAILED)),
+            )
+            .order_by(Contact.id.asc())
+        )
+        return list(self.session.scalars(stmt).all())
+
+    def list_for_join_check(self) -> list[Contact]:
+        stmt = (
+            select(Contact)
+            .where(
+                Contact.is_valid.is_(True),
+                Contact.bale_user_id.is_not(None),
+                Contact.join_status != JoinStatus.JOINED,
+                or_(
+                    Contact.direct_invite_status == DirectInviteStatus.SUCCESS,
+                    Contact.invite_link_status == InviteLinkStatus.SENT,
+                ),
             )
             .order_by(Contact.id.asc())
         )

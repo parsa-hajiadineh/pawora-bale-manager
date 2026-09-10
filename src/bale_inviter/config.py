@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     telegram_api_hash: str = ""
     telegram_phone: str = ""
     telegram_session_path: str = "./data/telegram.session"
+    dry_run: bool = False
+    exports_dir: str = "./exports"
     invite_message: str = (
         "سلام همکار گرامی، برای عضویت در گروه از لینک زیر استفاده کنید:\n{invite_link}"
     )

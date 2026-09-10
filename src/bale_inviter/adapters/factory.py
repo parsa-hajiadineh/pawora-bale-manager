@@ -1,10 +1,24 @@
 from __future__ import annotations
 
 from bale_inviter.adapters.bale import BaleAdapter, BaleConfigError, UnimplementedBaleAdapter
+from bale_inviter.adapters.dry_run import DryRunAdapter
 from bale_inviter.adapters.fake import FakeBaleAdapter
 from bale_inviter.adapters.http import HttpBaleAdapter
 from bale_inviter.adapters.telegram import TelegramUserAdapter, TelethonGateway
 from bale_inviter.config import Settings, get_settings
+
+
+def maybe_dry_run(
+    adapter: BaleAdapter,
+    settings: Settings | None = None,
+    *,
+    dry_run: bool = False,
+    allow_checks: bool = True,
+) -> BaleAdapter:
+    cfg = settings or get_settings()
+    if dry_run or cfg.dry_run:
+        return DryRunAdapter(adapter, allow_checks=allow_checks)
+    return adapter
 
 
 def create_bale_adapter(settings: Settings | None = None) -> BaleAdapter:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bale-inviter"
-version = "0.4.0"
+version = "0.5.0"
 description = "Invite Excel contacts to a Telegram group by phone via a user session"
 readme = "README.md"
 requires-python = ">=3.11"
