@@ -1,0 +1,35 @@
+.env
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Local SQLite and runtime files
+data/*.db
+data/*.db-*
+logs/*
+!logs/.gitkeep
+
+# Contact files must stay out of git
+imports/*
+!imports/.gitkeep
+*.xlsx
+*.xls
+*.csv
+!tests/fixtures/**
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
