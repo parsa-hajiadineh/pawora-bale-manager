@@ -15,7 +15,7 @@ from bale_inviter.queue.models import DuplicateJobError, EnqueueRequest, JobView
 
 
 class QueueService:
-    """SQLite-backed job queue. Phase 1 stores and schedules jobs but never talks to Bale."""
+    """SQLite-backed job queue. Phase 2 executes CHECK_BALE_ACCOUNT; other Bale writes stay queued only."""
 
     def __init__(self, session: Session, settings: Settings | None = None) -> None:
         self.session = session
@@ -108,14 +108,21 @@ class QueueService:
         )
         return self._to_view(job)
 
-    def mark_failure(self, job_id: int, error: str, phone: str | None = None) -> JobView:
+    def mark_failure(
+        self,
+        job_id: int,
+        error: str,
+        phone: str | None = None,
+        *,
+        retry: bool = True,
+    ) -> JobView:
         job = self._require(job_id)
         now = utcnow()
         masked = mask_phone(phone) if phone else None
         safe_error = error
         job.last_error = safe_error
         job.updated_at = now
-        if job.attempts < job.max_attempts:
+        if retry and job.attempts < job.max_attempts:
             delay = job.delay_seconds or self.settings.job_retry_delay_seconds
             job.status = JobStatus.RETRYING
             job.scheduled_at = now + timedelta(seconds=delay)

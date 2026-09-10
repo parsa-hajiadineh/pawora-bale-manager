@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -49,7 +49,24 @@ def create_db_engine(database_url: str | None = None) -> Engine:
 def init_db(engine: Engine | None = None, settings: Settings | None = None) -> Engine:
     db_engine = engine or create_db_engine((settings or get_settings()).database_url)
     Base.metadata.create_all(db_engine)
+    _migrate_schema(db_engine)
     return db_engine
+
+
+def _migrate_schema(engine: Engine) -> None:
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "contacts" not in tables:
+        return
+    columns = {column["name"] for column in inspector.get_columns("contacts")}
+    statements: list[str] = []
+    if "bale_user_id" not in columns:
+        statements.append("ALTER TABLE contacts ADD COLUMN bale_user_id VARCHAR(64)")
+    if not statements:
+        return
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:

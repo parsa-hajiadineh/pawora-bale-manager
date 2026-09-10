@@ -13,6 +13,25 @@ from bale_inviter.domain.phone import mask_phone, normalize_phone
 from bale_inviter.importers.parser import parse_contacts_file
 from bale_inviter.logging_setup import log_event
 
+BALE_USER_ID_KEYS = {
+    "bale_user_id",
+    "user_id",
+    "bale id",
+    "شناسه",
+    "شناسه بله",
+}
+
+
+def extract_bale_user_id(extra: dict[str, str] | None) -> str | None:
+    if not extra:
+        return None
+    for key, value in extra.items():
+        if key.strip().lower() in BALE_USER_ID_KEYS:
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
 
 @dataclass(slots=True)
 class ImportResult:
@@ -78,6 +97,8 @@ class ImportService:
             if existing is None and normalized:
                 existing = self.contacts.get_by_normalized_phone(normalized)
 
+            user_id = extract_bale_user_id(row.extra)
+
             if existing is not None:
                 result.duplicate += 1
                 result.updated += 1
@@ -86,6 +107,8 @@ class ImportService:
                 existing.normalized_phone = normalized
                 existing.is_valid = is_valid
                 existing.extra_data = row.extra or existing.extra_data
+                if user_id:
+                    existing.bale_user_id = user_id
                 self.contacts.touch(existing)
                 log_event(
                     logging.INFO,
@@ -102,6 +125,7 @@ class ImportService:
                 is_valid=is_valid,
                 import_fingerprint=fp,
                 extra_data=row.extra or None,
+                bale_user_id=user_id,
                 error_message=None if is_valid else "invalid_phone",
             )
             self.contacts.add(contact)

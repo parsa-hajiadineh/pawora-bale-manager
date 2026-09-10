@@ -24,6 +24,7 @@ class ContactRecord:
     last_attempt_at: datetime | None = None
     attempt_count: int = 0
     error_message: str | None = None
+    bale_user_id: str | None = None
     id: int | None = None
 
 

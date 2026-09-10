@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from bale_inviter.database.repositories import ContactRepository, ImportBatchRepository
-from bale_inviter.domain.enums import BaleAccountStatus
+from bale_inviter.database.repositories import ContactRepository, ImportBatchRepository, JobRepository
+from bale_inviter.domain.enums import BaleAccountStatus, JobStatus, JobType
 
 
 @dataclass(slots=True)
@@ -18,12 +18,17 @@ class ContactSummary:
     has_bale_account: int
     no_bale_account: int
     error_bale_account: int
+    with_bale_user_id: int
+    pending_account_checks: int
+    completed_account_checks: int
+    failed_account_checks: int
 
 
 class ReportingService:
     def __init__(self, session: Session) -> None:
         self.contacts = ContactRepository(session)
         self.batches = ImportBatchRepository(session)
+        self.jobs = JobRepository(session)
 
     def summarize(self) -> ContactSummary:
         latest = self.batches.latest()
@@ -37,6 +42,19 @@ class ReportingService:
             has_bale_account=self.contacts.count_by_bale_status(BaleAccountStatus.HAS_ACCOUNT),
             no_bale_account=self.contacts.count_by_bale_status(BaleAccountStatus.NO_ACCOUNT),
             error_bale_account=self.contacts.count_by_bale_status(BaleAccountStatus.ERROR),
+            with_bale_user_id=self.contacts.count_with_bale_user_id(),
+            pending_account_checks=self.jobs.count_by_type_status(
+                JobType.CHECK_BALE_ACCOUNT, JobStatus.PENDING
+            )
+            + self.jobs.count_by_type_status(JobType.CHECK_BALE_ACCOUNT, JobStatus.DELAYED)
+            + self.jobs.count_by_type_status(JobType.CHECK_BALE_ACCOUNT, JobStatus.RETRYING)
+            + self.jobs.count_by_type_status(JobType.CHECK_BALE_ACCOUNT, JobStatus.RUNNING),
+            completed_account_checks=self.jobs.count_by_type_status(
+                JobType.CHECK_BALE_ACCOUNT, JobStatus.COMPLETED
+            ),
+            failed_account_checks=self.jobs.count_by_type_status(
+                JobType.CHECK_BALE_ACCOUNT, JobStatus.FAILED
+            ),
         )
 
     def as_dict(self) -> dict[str, int]:
@@ -50,4 +68,8 @@ class ReportingService:
             "has_bale_account": summary.has_bale_account,
             "no_bale_account": summary.no_bale_account,
             "error_bale_account": summary.error_bale_account,
+            "with_bale_user_id": summary.with_bale_user_id,
+            "pending_account_checks": summary.pending_account_checks,
+            "completed_account_checks": summary.completed_account_checks,
+            "failed_account_checks": summary.failed_account_checks,
         }

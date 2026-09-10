@@ -9,7 +9,7 @@ setup_logging(settings.log_level, settings.log_dir)
 
 app = FastAPI(
     title="Bale Inviter",
-    description="Phase 1 core: contact import, status, and job queue. No Bale operations.",
-    version="0.1.0",
+    description="Phase 2: contact import, status, job queue, and Bale account checks. No invites or private messages.",
+    version="0.2.0",
 )
 app.include_router(reporting_router)

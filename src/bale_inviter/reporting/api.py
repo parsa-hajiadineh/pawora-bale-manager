@@ -19,7 +19,7 @@ def _get_db() -> Session:
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "phase": "1"}
+    return {"status": "ok", "phase": "2"}
 
 
 @router.get("/report")

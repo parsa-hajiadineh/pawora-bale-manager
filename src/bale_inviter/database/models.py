@@ -40,6 +40,7 @@ class Contact(Base):
     is_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     import_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    bale_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     bale_account_status: Mapped[BaleAccountStatus] = mapped_column(
         Enum(BaleAccountStatus, native_enum=False, length=32),
         nullable=False,
@@ -129,3 +130,17 @@ class Job(Base):
     )
 
     contact: Mapped[Contact | None] = relationship(back_populates="jobs")
+
+
+class AppState(Base):
+    __tablename__ = "app_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+        server_default=func.now(),
+    )

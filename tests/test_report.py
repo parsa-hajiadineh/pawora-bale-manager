@@ -50,6 +50,8 @@ def test_report_counts(session) -> None:
     assert summary["unknown_bale_account"] == 2
     assert summary["has_bale_account"] == 1
     assert summary["no_bale_account"] == 1
+    assert summary["with_bale_user_id"] == 0
+    assert summary["pending_account_checks"] == 0
 
 
 def test_report_duplicate_from_last_import(session) -> None:

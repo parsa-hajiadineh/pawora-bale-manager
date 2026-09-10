@@ -4,6 +4,7 @@ from openpyxl import Workbook
 
 from bale_inviter.importers.parser import parse_contacts_file
 from bale_inviter.importers.service import ImportService
+from bale_inviter.database.repositories import ContactRepository
 
 
 def test_parse_csv_fixture() -> None:
@@ -47,3 +48,14 @@ def test_import_xlsx(session, tmp_path: Path) -> None:
     assert result.invalid == 1
     assert result.duplicate == 1
     assert result.created == 2
+
+
+def test_import_reads_optional_bale_user_id(session, tmp_path: Path) -> None:
+    path = tmp_path / "with_ids.csv"
+    path.write_text("name,phone,bale_user_id\nسارا,09123334444,12345\n", encoding="utf-8")
+    result = ImportService(session).import_file(path)
+    session.commit()
+    assert result.created == 1
+    contact = ContactRepository(session).get_by_normalized_phone("+989123334444")
+    assert contact is not None
+    assert contact.bale_user_id == "12345"

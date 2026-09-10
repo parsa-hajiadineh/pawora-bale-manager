@@ -1,30 +1,31 @@
-# مدیریت دعوت همکاران در بله — فاز ۱
+# مدیریت دعوت همکاران در بله — فاز ۲
 
-هستهٔ مدیریت مخاطبین، وضعیت‌ها و صف Job. در این فاز **هیچ پیام خصوصی، دعوت به گروه، یا عملیات انبوه روی بله انجام نمی‌شود.**
+فاز ۲ فقط **بررسی حساب بله** (`CHECK_BALE_ACCOUNT`) را اجرا می‌کند.
 
-## معماری
+در این فاز **هیچ پیام خصوصی، دعوت به گروه، یا عملیات انبوه نوشتنی روی بله انجام نمی‌شود.**
 
-| بخش | انتخاب فاز ۱ (رایگان / موقت) |
-| --- | --- |
-| زبان | Python 3.11+ |
-| رابط | CLI (`typer`) + API گزارش (`FastAPI`) |
-| دیتابیس | SQLite فایل محلی — بدون سرور |
-| صف Job | جدول `jobs` داخل همان SQLite — بدون Redis/Celery |
-| تنظیمات | متغیر محیطی / فایل `.env` |
-| لاگ | فایل چرخشی + کنسول، با Mask شماره |
+## محدودیت مهم API بازو
 
-لایه‌ها جدا هستند: Import، Domain، Database، Queue، Bale Adapter (فقط Interface)، Services، Reporting، Config، Logging.
+API رسمی بازوی بله (`tapi.bale.ai`) کاربر را با **شماره موبایل** پیدا نمی‌کند؛ برای `getChat` به `user_id` نیاز دارد.
 
-## کارهایی که برای سرور موقت لازم نیست
+اگر در فایل Excel ستون `bale_user_id` / `user_id` داشته باشید، سیستم می‌تواند حساب را چک کند.
 
-چون ربات موقتی و رایگان است:
+اگر فقط `name` و `phone` دارید، وضعیت همان `UNKNOWN` می‌ماند تا وقتی که:
 
-- نیازی به PostgreSQL، Redis، Docker، یا VPS پولی نیست.
-- دیتابیس همان فایل `data/bale.db` است.
-- روی همین ویندوز (یا هر سیستم با Python) اجرا می‌شود.
-- در فاز ۱ توکن بله لازم نیست و نباید در کد یا چت قرار بگیرد.
+- کاربر بازو را استارت کند و مخاطبش را Share کند، بعد `sync-bot-updates` را بزنید، یا
+- در فاز بعد از لینک دعوت گروه استفاده شود (بدون پیام خصوصی از طرف ما).
 
-اگر بعداً خواستید روی یک سیستم دیگر اجرا کنید، فقط Python را نصب کنید، پروژه را کپی کنید و `.env` را آنجا بسازید.
+## کارهایی که برای سرور موقت لازم است
+
+ربات موقتی و رایگان است؛ **VPS، PostgreSQL، Redis، Docker و سرویس پولی لازم نیست.**
+
+روی همین ویندوز:
+
+1. Python 3.11+ را نصب کنید (اگر ندارید).
+2. داخل بله `@BotFather` را باز کنید، `/newbot` بزنید، یک بازوی موقت بسازید و **توکن را فقط در فایل `.env` محلی** بگذارید. توکن را در چت یا Git نگذارید.
+3. دیتابیس همان فایل رایگان `data/bale.db` است. سرور دیتابیس جدا نمی‌خواهد.
+4. برای فاز ۲ لازم نیست بازو را ادمین گروه کنید. آن کار برای فاز دعوت است.
+5. پروژه را روی همین سیستم اجرا کنید؛ نیازی به هاست ابری نیست.
 
 ## نصب
 
@@ -38,19 +39,32 @@ copy .env.example .env
 python -m bale_inviter init-db
 ```
 
+سپس توکن بازو را در `.env` روی `BALE_BOT_TOKEN` بگذارید.
+
 ## استفاده
 
 فایل Excel/CSV را در پوشه `imports/` بگذارید (این پوشه در Git نیست).
 
-ستون‌های قابل تشخیص: `name` / `نام` و `phone` / `شماره`.
+ستون‌های قابل تشخیص: `name` / `نام` و `phone` / `شماره`. ستون اختیاری: `bale_user_id` / `user_id`.
 
 ```powershell
 python -m bale_inviter import-contacts .\imports\contacts.xlsx
+python -m bale_inviter ping-bale
+python -m bale_inviter enqueue-account-checks
+python -m bale_inviter worker
 python -m bale_inviter report
 python -m bale_inviter serve
 ```
 
+اگر همکاران بازو را باز کنند و مخاطب خود را برایش بفرستند:
+
+```powershell
+python -m bale_inviter sync-bot-updates
+```
+
 گزارش HTTP: [http://127.0.0.1:8000/report](http://127.0.0.1:8000/report)
+
+`worker` را با `Ctrl+C` متوقف کنید. فاصله بین هر چک از `INVITE_INTERVAL` خوانده می‌شود.
 
 ## تست
 
@@ -65,10 +79,13 @@ pytest
 - `invite_link_status`: `NOT_SENT` | `SENT` | `FAILED`
 - `join_status`: `UNKNOWN` | `JOINED` | `NOT_JOINED`
 
-Jobهای آینده فقط در صف ثبت می‌شوند و اجرا نمی‌گردند: `CHECK_BALE_ACCOUNT`, `DIRECT_INVITE`, `SEND_INVITE_LINK`, `CHECK_JOIN_STATUS`.
+Job فعال فاز ۲: `CHECK_BALE_ACCOUNT`.
+
+هنوز اجرا نمی‌شوند: `DIRECT_INVITE`, `SEND_INVITE_LINK`, `CHECK_JOIN_STATUS`.
 
 ## امنیت
 
 - `.env` و فایل‌های Excel/CSV در Git نیستند.
 - شماره موبایل در لاگ Mask می‌شود.
-- Adapter بله در فاز ۱ `NotImplementedError` می‌دهد و عمداً به API بله وصل نیست.
+- توکن بازو هرگز نباید در Repository یا خروجی چت قرار بگیرد.
+- Adapter فاز ۲ فقط `getMe` / `getChat` / `getUpdates` را صدا می‌زند.

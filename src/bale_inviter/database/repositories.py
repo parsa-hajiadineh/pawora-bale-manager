@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from bale_inviter.database.models import Contact, ImportBatch, Job, utcnow
+from bale_inviter.database.models import AppState, Contact, ImportBatch, Job, utcnow
 from bale_inviter.domain.enums import ACTIVE_JOB_STATUSES, BaleAccountStatus, JobStatus, JobType
 
 
@@ -49,6 +49,28 @@ class ContactRepository:
         return int(
             self.session.scalar(
                 select(func.count()).select_from(Contact).where(Contact.bale_account_status == status)
+            )
+            or 0
+        )
+
+    def list_valid_for_account_check(
+        self, statuses: tuple[BaleAccountStatus, ...]
+    ) -> list[Contact]:
+        stmt = (
+            select(Contact)
+            .where(
+                Contact.is_valid.is_(True),
+                Contact.normalized_phone.is_not(None),
+                Contact.bale_account_status.in_(statuses),
+            )
+            .order_by(Contact.id.asc())
+        )
+        return list(self.session.scalars(stmt).all())
+
+    def count_with_bale_user_id(self) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Contact).where(Contact.bale_user_id.is_not(None))
             )
             or 0
         )
@@ -114,3 +136,31 @@ class JobRepository:
     def list_by_type(self, job_type: JobType) -> list[Job]:
         stmt = select(Job).where(Job.job_type == job_type).order_by(Job.id)
         return list(self.session.scalars(stmt).all())
+
+    def count_by_type_status(self, job_type: JobType, status: JobStatus) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(Job)
+                .where(Job.job_type == job_type, Job.status == status)
+            )
+            or 0
+        )
+
+
+class AppStateRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get(self, key: str) -> str | None:
+        row = self.session.get(AppState, key)
+        return None if row is None else row.value
+
+    def set(self, key: str, value: str) -> None:
+        row = self.session.get(AppState, key)
+        if row is None:
+            self.session.add(AppState(key=key, value=value))
+        else:
+            row.value = value
+            row.updated_at = utcnow()
+        self.session.flush()

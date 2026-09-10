@@ -16,9 +16,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/bale.db"
     bale_account: str = ""
     bale_bot_token: str = ""
+    bale_api_base_url: str = "https://tapi.bale.ai"
+    bale_adapter: str = "http"
     group_id: str = ""
     invite_link: str = ""
     invite_interval: int = 5
+    worker_poll_seconds: int = 2
     max_retries: int = 3
     job_retry_delay_seconds: int = 60
     log_level: str = "INFO"

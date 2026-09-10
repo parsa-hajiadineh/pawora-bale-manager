@@ -89,4 +89,4 @@ def test_delayed_job_is_not_claimed(session, settings) -> None:
 def test_phase1_adapter_does_not_call_bale() -> None:
     adapter = UnimplementedBaleAdapter()
     with pytest.raises(NotImplementedError):
-        asyncio.run(adapter.check_account("+989121234567"))
+        asyncio.run(adapter.direct_invite("+989121234567", "group"))

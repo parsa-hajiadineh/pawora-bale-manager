@@ -64,3 +64,9 @@ class ContactService:
         contact.error_message = error_message
         self.contacts.touch(contact)
         return contact
+
+    def set_bale_user_id(self, contact: Contact, bale_user_id: str | None) -> Contact:
+        if bale_user_id:
+            contact.bale_user_id = str(bale_user_id)
+            self.contacts.touch(contact)
+        return contact
