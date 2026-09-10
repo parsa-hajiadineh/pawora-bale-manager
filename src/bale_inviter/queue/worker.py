@@ -1,7 +1,7 @@
 """Job worker.
 
-Phase 2 executes CHECK_BALE_ACCOUNT only. DIRECT_INVITE, SEND_INVITE_LINK,
-and CHECK_JOIN_STATUS stay without handlers.
+Phase 3 executes CHECK_BALE_ACCOUNT, DIRECT_INVITE, SEND_INVITE_LINK,
+and CHECK_JOIN_STATUS with a shared rate limit.
 """
 
 from __future__ import annotations
@@ -20,8 +20,16 @@ from bale_inviter.logging_setup import log_event
 from bale_inviter.queue.models import JobView
 from bale_inviter.queue.service import QueueService
 from bale_inviter.services.account_check import AccountCheckService
+from bale_inviter.services.invite import InviteService
 
 JobHandler = Callable[[JobView], Awaitable[None]]
+
+RATE_LIMITED_JOBS = {
+    JobType.CHECK_BALE_ACCOUNT,
+    JobType.DIRECT_INVITE,
+    JobType.SEND_INVITE_LINK,
+    JobType.CHECK_JOIN_STATUS,
+}
 
 
 class JobWorker:
@@ -49,7 +57,7 @@ class JobWorker:
             )
             self.queue.mark_failure(
                 job.id,
-                "No handler registered in phase 2; only CHECK_BALE_ACCOUNT is enabled.",
+                "No handler registered for this job type.",
                 retry=False,
             )
             return True
@@ -64,7 +72,7 @@ class JobWorker:
         return True
 
     async def _respect_interval(self, job_type: JobType) -> None:
-        if job_type is not JobType.CHECK_BALE_ACCOUNT or self.interval_seconds <= 0:
+        if job_type not in RATE_LIMITED_JOBS or self.interval_seconds <= 0:
             return
         now = time.monotonic()
         if self._last_bale_call_at is not None:
@@ -74,7 +82,7 @@ class JobWorker:
         self._last_bale_call_at = time.monotonic()
 
 
-def build_account_check_worker(
+def build_worker(
     session: Session,
     adapter: BaleAdapter,
     settings: Settings | None = None,
@@ -82,14 +90,36 @@ def build_account_check_worker(
 ) -> JobWorker:
     cfg = settings or get_settings()
     queue = QueueService(session, cfg)
-    service = AccountCheckService(session, adapter, queue)
+    checks = AccountCheckService(session, adapter, queue)
+    invites = InviteService(session, adapter, queue, cfg)
     delay = cfg.invite_interval if interval_seconds is None else interval_seconds
     worker = JobWorker(queue, interval_seconds=delay)
 
     async def handle_check(job: JobView) -> None:
         if job.contact_id is None:
             raise ValueError("CHECK_BALE_ACCOUNT requires contact_id")
-        await service.process_contact(job.contact_id)
+        await checks.process_contact(job.contact_id)
+
+    async def handle_direct_invite(job: JobView) -> None:
+        if job.contact_id is None:
+            raise ValueError("DIRECT_INVITE requires contact_id")
+        await invites.process_direct_invite(job.contact_id)
+
+    async def handle_invite_link(job: JobView) -> None:
+        if job.contact_id is None:
+            raise ValueError("SEND_INVITE_LINK requires contact_id")
+        await invites.process_invite_link(job.contact_id)
+
+    async def handle_join(job: JobView) -> None:
+        if job.contact_id is None:
+            raise ValueError("CHECK_JOIN_STATUS requires contact_id")
+        await invites.process_join_check(job.contact_id)
 
     worker.register(JobType.CHECK_BALE_ACCOUNT, handle_check)
+    worker.register(JobType.DIRECT_INVITE, handle_direct_invite)
+    worker.register(JobType.SEND_INVITE_LINK, handle_invite_link)
+    worker.register(JobType.CHECK_JOIN_STATUS, handle_join)
     return worker
+
+
+build_account_check_worker = build_worker

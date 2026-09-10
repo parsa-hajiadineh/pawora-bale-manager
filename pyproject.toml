@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bale-inviter"
-version = "0.2.0"
-description = "Phase 2: contact import, status tracking, job queue, and Bale account checks"
+version = "0.3.0"
+description = "Phase 3: contact import, Bale account checks, direct invite, and invite-link messages"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

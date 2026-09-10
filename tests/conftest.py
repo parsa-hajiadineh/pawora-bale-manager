@@ -12,6 +12,11 @@ def settings(tmp_path: Path) -> Settings:
         database_url="sqlite:///:memory:",
         max_retries=3,
         job_retry_delay_seconds=0,
+        group_id="-1001",
+        invite_link="https://ble.ir/join/test",
+        invite_strategy="auto",
+        auto_invite_on_start=True,
+        invite_interval=0,
         log_level="INFO",
         log_dir=str(tmp_path / "logs"),
     )

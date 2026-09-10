@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from bale_inviter.database.repositories import ContactRepository, ImportBatchRepository, JobRepository
-from bale_inviter.domain.enums import BaleAccountStatus, JobStatus, JobType
+from bale_inviter.domain.enums import (
+    BaleAccountStatus,
+    DirectInviteStatus,
+    InviteLinkStatus,
+    JobStatus,
+    JobType,
+    JoinStatus,
+)
 
 
 @dataclass(slots=True)
@@ -22,6 +29,12 @@ class ContactSummary:
     pending_account_checks: int
     completed_account_checks: int
     failed_account_checks: int
+    direct_invite_success: int
+    direct_invite_failed: int
+    direct_invite_skipped: int
+    invite_link_sent: int
+    invite_link_failed: int
+    joined: int
 
 
 class ReportingService:
@@ -55,6 +68,12 @@ class ReportingService:
             failed_account_checks=self.jobs.count_by_type_status(
                 JobType.CHECK_BALE_ACCOUNT, JobStatus.FAILED
             ),
+            direct_invite_success=self.contacts.count_by_direct_invite_status(DirectInviteStatus.SUCCESS),
+            direct_invite_failed=self.contacts.count_by_direct_invite_status(DirectInviteStatus.FAILED),
+            direct_invite_skipped=self.contacts.count_by_direct_invite_status(DirectInviteStatus.SKIPPED),
+            invite_link_sent=self.contacts.count_by_invite_link_status(InviteLinkStatus.SENT),
+            invite_link_failed=self.contacts.count_by_invite_link_status(InviteLinkStatus.FAILED),
+            joined=self.contacts.count_by_join_status(JoinStatus.JOINED),
         )
 
     def as_dict(self) -> dict[str, int]:
@@ -72,4 +91,10 @@ class ReportingService:
             "pending_account_checks": summary.pending_account_checks,
             "completed_account_checks": summary.completed_account_checks,
             "failed_account_checks": summary.failed_account_checks,
+            "direct_invite_success": summary.direct_invite_success,
+            "direct_invite_failed": summary.direct_invite_failed,
+            "direct_invite_skipped": summary.direct_invite_skipped,
+            "invite_link_sent": summary.invite_link_sent,
+            "invite_link_failed": summary.invite_link_failed,
+            "joined": summary.joined,
         }

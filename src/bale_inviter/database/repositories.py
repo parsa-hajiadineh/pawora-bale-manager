@@ -6,7 +6,15 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from bale_inviter.database.models import AppState, Contact, ImportBatch, Job, utcnow
-from bale_inviter.domain.enums import ACTIVE_JOB_STATUSES, BaleAccountStatus, JobStatus, JobType
+from bale_inviter.domain.enums import (
+    ACTIVE_JOB_STATUSES,
+    BaleAccountStatus,
+    DirectInviteStatus,
+    InviteLinkStatus,
+    JobStatus,
+    JobType,
+    JoinStatus,
+)
 
 
 class ContactRepository:
@@ -71,6 +79,63 @@ class ContactRepository:
         return int(
             self.session.scalar(
                 select(func.count()).select_from(Contact).where(Contact.bale_user_id.is_not(None))
+            )
+            or 0
+        )
+
+    def get_by_bale_user_id(self, bale_user_id: str) -> Contact | None:
+        stmt = select(Contact).where(Contact.bale_user_id == str(bale_user_id))
+        return self.session.scalars(stmt).first()
+
+    def list_for_direct_invite(self) -> list[Contact]:
+        stmt = (
+            select(Contact)
+            .where(
+                Contact.is_valid.is_(True),
+                Contact.bale_user_id.is_not(None),
+                Contact.join_status != JoinStatus.JOINED,
+                Contact.direct_invite_status.in_(
+                    (DirectInviteStatus.NOT_STARTED, DirectInviteStatus.FAILED)
+                ),
+            )
+            .order_by(Contact.id.asc())
+        )
+        return list(self.session.scalars(stmt).all())
+
+    def list_for_invite_link(self) -> list[Contact]:
+        stmt = (
+            select(Contact)
+            .where(
+                Contact.is_valid.is_(True),
+                Contact.bale_user_id.is_not(None),
+                Contact.join_status != JoinStatus.JOINED,
+                Contact.direct_invite_status != DirectInviteStatus.SUCCESS,
+                Contact.invite_link_status.in_((InviteLinkStatus.NOT_SENT, InviteLinkStatus.FAILED)),
+            )
+            .order_by(Contact.id.asc())
+        )
+        return list(self.session.scalars(stmt).all())
+
+    def count_by_direct_invite_status(self, status: DirectInviteStatus) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Contact).where(Contact.direct_invite_status == status)
+            )
+            or 0
+        )
+
+    def count_by_invite_link_status(self, status: InviteLinkStatus) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Contact).where(Contact.invite_link_status == status)
+            )
+            or 0
+        )
+
+    def count_by_join_status(self, status: JoinStatus) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Contact).where(Contact.join_status == status)
             )
             or 0
         )

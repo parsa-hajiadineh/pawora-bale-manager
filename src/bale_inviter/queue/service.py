@@ -15,7 +15,7 @@ from bale_inviter.queue.models import DuplicateJobError, EnqueueRequest, JobView
 
 
 class QueueService:
-    """SQLite-backed job queue. Phase 2 executes CHECK_BALE_ACCOUNT; other Bale writes stay queued only."""
+    """SQLite-backed job queue. Phase 3 runs account checks, direct invites, and invite-link jobs."""
 
     def __init__(self, session: Session, settings: Settings | None = None) -> None:
         self.session = session

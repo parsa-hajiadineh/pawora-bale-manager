@@ -1,35 +1,21 @@
-# مدیریت دعوت همکاران در بله — فاز ۲
+# مدیریت دعوت همکاران در بله — فاز ۳
 
-فاز ۲ فقط **بررسی حساب بله** (`CHECK_BALE_ACCOUNT`) را اجرا می‌کند.
+بازوی موقت می‌تواند مخاطب را **مستقیم به گروه اضافه کند** یا **لینک عضویت را در پیام خصوصی بفرستد**.
 
-در این فاز **هیچ پیام خصوصی، دعوت به گروه، یا عملیات انبوه نوشتنی روی بله انجام نمی‌شود.**
+API رسمی بازو کاربر را با شماره موبایل پیدا نمی‌کند. برای دعوت مستقیم یا پیام خصوصی باید `user_id` معلوم باشد: از ستون اختیاری Excel، یا وقتی همکار بازو را Start کند / شماره‌اش را Share کند.
 
-## محدودیت مهم API بازو
+## کار رایگان روی سیستم خودتان
 
-API رسمی بازوی بله (`tapi.bale.ai`) کاربر را با **شماره موبایل** پیدا نمی‌کند؛ برای `getChat` به `user_id` نیاز دارد.
+VPS، PostgreSQL، Redis و سرویس پولی لازم نیست. دیتابیس فایل `data/bale.db` است.
 
-اگر در فایل Excel ستون `bale_user_id` / `user_id` داشته باشید، سیستم می‌تواند حساب را چک کند.
+1. داخل بله `@BotFather` → `/newbot` → توکن را فقط در `.env` بگذارید.
+2. بازو را به گروه هدف اضافه کنید و **ادمین با دسترسی دعوت اعضا** کنید.
+3. یک پیام در گروه بفرستید، بعد `run-bot` را اجرا کنید تا `chat_id` گروه در لاگ دیده شود و همان را در `GROUP_ID` بگذارید.
+4. یا لینک عضویت گروه را دستی در `INVITE_LINK` بگذارید.
 
-اگر فقط `name` و `phone` دارید، وضعیت همان `UNKNOWN` می‌ماند تا وقتی که:
-
-- کاربر بازو را استارت کند و مخاطبش را Share کند، بعد `sync-bot-updates` را بزنید، یا
-- در فاز بعد از لینک دعوت گروه استفاده شود (بدون پیام خصوصی از طرف ما).
-
-## کارهایی که برای سرور موقت لازم است
-
-ربات موقتی و رایگان است؛ **VPS، PostgreSQL، Redis، Docker و سرویس پولی لازم نیست.**
-
-روی همین ویندوز:
-
-1. Python 3.11+ را نصب کنید (اگر ندارید).
-2. داخل بله `@BotFather` را باز کنید، `/newbot` بزنید، یک بازوی موقت بسازید و **توکن را فقط در فایل `.env` محلی** بگذارید. توکن را در چت یا Git نگذارید.
-3. دیتابیس همان فایل رایگان `data/bale.db` است. سرور دیتابیس جدا نمی‌خواهد.
-4. برای فاز ۲ لازم نیست بازو را ادمین گروه کنید. آن کار برای فاز دعوت است.
-5. پروژه را روی همین سیستم اجرا کنید؛ نیازی به هاست ابری نیست.
+توکن را در چت یا Git نگذارید.
 
 ## نصب
-
-در PowerShell، داخل پوشه پروژه:
 
 ```powershell
 python -m venv .venv
@@ -39,32 +25,30 @@ copy .env.example .env
 python -m bale_inviter init-db
 ```
 
-سپس توکن بازو را در `.env` روی `BALE_BOT_TOKEN` بگذارید.
+## اجرا
 
-## استفاده
-
-فایل Excel/CSV را در پوشه `imports/` بگذارید (این پوشه در Git نیست).
-
-ستون‌های قابل تشخیص: `name` / `نام` و `phone` / `شماره`. ستون اختیاری: `bale_user_id` / `user_id`.
+فایل Excel/CSV را در `imports/` بگذارید.
 
 ```powershell
 python -m bale_inviter import-contacts .\imports\contacts.xlsx
 python -m bale_inviter ping-bale
-python -m bale_inviter enqueue-account-checks
-python -m bale_inviter worker
+python -m bale_inviter prepare-group
+python -m bale_inviter enqueue-invites
+python -m bale_inviter run-bot
 python -m bale_inviter report
-python -m bale_inviter serve
 ```
 
-اگر همکاران بازو را باز کنند و مخاطب خود را برایش بفرستند:
+`run-bot` همزمان:
 
-```powershell
-python -m bale_inviter sync-bot-updates
-```
+- به `/start` جواب می‌دهد و لینک گروه را می‌فرستد
+- اگر مخاطب شماره را Share کند، با فایل Excel مچ می‌شود و دعوت می‌کند
+- Jobهای صف را با فاصله `INVITE_INTERVAL` اجرا می‌کند
+
+`INVITE_STRATEGY=auto` یعنی اول دعوت مستقیم؛ اگر شکست بخورد لینک خصوصی ارسال می‌شود.
+
+`Ctrl+C` برای توقف.
 
 گزارش HTTP: [http://127.0.0.1:8000/report](http://127.0.0.1:8000/report)
-
-`worker` را با `Ctrl+C` متوقف کنید. فاصله بین هر چک از `INVITE_INTERVAL` خوانده می‌شود.
 
 ## تست
 
@@ -72,20 +56,10 @@ python -m bale_inviter sync-bot-updates
 pytest
 ```
 
-## وضعیت‌های مخاطب
+## محدودیت Bot API
 
-- `bale_account_status`: `UNKNOWN` | `HAS_ACCOUNT` | `NO_ACCOUNT` | `ERROR`
-- `direct_invite_status`: `NOT_STARTED` | `SUCCESS` | `FAILED` | `SKIPPED`
-- `invite_link_status`: `NOT_SENT` | `SENT` | `FAILED`
-- `join_status`: `UNKNOWN` | `JOINED` | `NOT_JOINED`
+بدون `bale_user_id` نمی‌توان ۶۰۰ نفر را فقط با شماره، مستقیم عضو کرد. مسیر عملی برای لیست همکاران:
 
-Job فعال فاز ۲: `CHECK_BALE_ACCOUNT`.
-
-هنوز اجرا نمی‌شوند: `DIRECT_INVITE`, `SEND_INVITE_LINK`, `CHECK_JOIN_STATUS`.
-
-## امنیت
-
-- `.env` و فایل‌های Excel/CSV در Git نیستند.
-- شماره موبایل در لاگ Mask می‌شود.
-- توکن بازو هرگز نباید در Repository یا خروجی چت قرار بگیرد.
-- Adapter فاز ۲ فقط `getMe` / `getChat` / `getUpdates` را صدا می‌زند.
+- لینک بازو را برایشان بفرستید تا Start کنند، یا
+- ستون `user_id` را اگر دارید وارد کنید، یا
+- لینک گروه را بیرون از بله پخش کنید.

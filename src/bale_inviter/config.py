@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     job_retry_delay_seconds: int = 60
     log_level: str = "INFO"
     log_dir: str = "./logs"
+    invite_strategy: str = "auto"
+    auto_invite_on_start: bool = True
+    invite_message: str = (
+        "سلام همکار گرامی، برای عضویت در گروه از لینک زیر استفاده کنید:\n{invite_link}"
+    )
+    bot_start_message: str = (
+        "سلام. برای عضویت در گروه همکاران لینک زیر را باز کنید "
+        "یا شماره خود را با دکمه ارسال کنید تا شما را اضافه کنیم.\n{invite_link}"
+    )
 
 
 @lru_cache(maxsize=1)

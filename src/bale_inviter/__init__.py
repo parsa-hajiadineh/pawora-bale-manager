@@ -1,3 +1,3 @@
-"""Bale inviter phase-2 package."""
+"""Bale inviter phase-3 package."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

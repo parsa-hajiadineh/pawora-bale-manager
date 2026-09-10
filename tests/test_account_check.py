@@ -88,7 +88,7 @@ def test_worker_runs_account_check_only(session, settings) -> None:
     assert job.status is JobStatus.COMPLETED
 
 
-def test_worker_does_not_execute_direct_invite(session, settings) -> None:
+def test_worker_skips_direct_invite_without_user_id(session, settings) -> None:
     contact = _add_contact(session, "5")
     adapter = FakeBaleAdapter()
     queue = QueueService(session, settings)
@@ -96,9 +96,10 @@ def test_worker_does_not_execute_direct_invite(session, settings) -> None:
     worker = build_account_check_worker(session, adapter, settings, interval_seconds=0)
     assert asyncio.run(worker.process_one()) is True
     job = queue.jobs.list_by_type(JobType.DIRECT_INVITE)[0]
-    assert job.status is JobStatus.FAILED
-    assert adapter.forbidden_calls == []
-    assert contact.direct_invite_status.value == "NOT_STARTED"
+    assert job.status is JobStatus.COMPLETED
+    assert adapter.direct_invite_calls == []
+    session.refresh(contact)
+    assert contact.direct_invite_status.value == "SKIPPED"
 
 
 def test_retryable_error_keeps_job_retrying(session, settings) -> None:
