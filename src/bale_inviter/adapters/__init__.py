@@ -14,6 +14,7 @@ from bale_inviter.adapters.bale import (
 from bale_inviter.adapters.factory import create_bale_adapter
 from bale_inviter.adapters.fake import FakeBaleAdapter
 from bale_inviter.adapters.http import HttpBaleAdapter
+from bale_inviter.adapters.telegram import MemoryTelegramGateway, TelegramUserAdapter
 
 __all__ = [
     "BaleAdapter",
@@ -24,10 +25,12 @@ __all__ = [
     "DirectInviteResult",
     "FakeBaleAdapter",
     "HttpBaleAdapter",
+    "MemoryTelegramGateway",
     "InviteLinkResult",
     "JoinStatusResult",
     "RetryableBaleError",
     "SharedContactUpdate",
+    "TelegramUserAdapter",
     "UnimplementedBaleAdapter",
     "create_bale_adapter",
 ]

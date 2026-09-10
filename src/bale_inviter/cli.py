@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from bale_inviter.adapters.bale import BaleConfigError
 from bale_inviter.adapters.factory import create_bale_adapter
+from bale_inviter.adapters.telegram import login_telegram_session
 from bale_inviter.config import get_settings
 from bale_inviter.database.session import create_db_engine, create_session_factory, init_db
 from bale_inviter.importers.service import ImportService
@@ -22,7 +23,7 @@ from bale_inviter.services.account_check import AccountCheckService
 from bale_inviter.services.bot_runtime import BotRuntime
 from bale_inviter.services.invite import InviteService
 
-app = typer.Typer(help="Bale contact manager — phase 3 (direct invite or send group invite link).")
+app = typer.Typer(help="Invite Excel contacts to a Telegram group by phone (user session, not a bot).")
 
 
 @contextmanager
@@ -96,15 +97,79 @@ def report() -> None:
         typer.echo(f"  {key}: {value}")
 
 
+@app.command("telegram-login")
+def telegram_login() -> None:
+    """Log in once with your Telegram account. Run this in PowerShell, not inside chat."""
+    settings = get_settings()
+    if not settings.telegram_api_id or not settings.telegram_api_hash:
+        typer.secho(
+            "Set TELEGRAM_API_ID and TELEGRAM_API_HASH in .env (free: https://my.telegram.org)",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    phone = (settings.telegram_phone or "").strip() or typer.prompt("Your Telegram phone (example +98912...)")
+    typer.echo("Telegram will send a login code to the app.")
+
+    def _code() -> str:
+        return typer.prompt("Login code")
+
+    def _password() -> str:
+        return typer.prompt("Two-step password", hide_input=True)
+
+    try:
+        info = asyncio.run(
+            login_telegram_session(
+                settings.telegram_api_id,
+                settings.telegram_api_hash,
+                settings.telegram_session_path,
+                phone,
+                _code,
+                _password,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"logged in id={info.id} username={info.username or '-'}")
+
+
 @app.command("ping-bale")
 def ping_bale() -> None:
-    """Verify BALE_BOT_TOKEN with getMe."""
+    """Verify the configured messenger session (Telegram user or Bale bot)."""
     settings, adapter = _adapter_or_exit()
     info = asyncio.run(adapter.verify_credentials())
-    typer.echo(f"bot ok id={info.id} username={info.username or '-'} is_bot={info.is_bot}")
+    platform = settings.messenger_platform or settings.bale_adapter
+    typer.echo(
+        f"ok platform={platform} id={info.id} username={info.username or '-'} is_bot={info.is_bot}"
+    )
     if not settings.group_id:
-        typer.echo("GROUP_ID is empty. Add the bot to the group, then run: python -m bale_inviter run-bot")
-        typer.echo("When someone writes in the group, the chat_id is logged so you can copy it into .env")
+        typer.echo("GROUP_ID is empty. Put the Telegram group id or @username in .env")
+
+
+@app.command("run-invites")
+def run_invites() -> None:
+    """Check phones on Telegram, then invite those with an account. Not one-by-one manual sends."""
+    settings, adapter = _adapter_or_exit()
+    with session_scope() as session:
+        checks = AccountCheckService(session, adapter, QueueService(session, settings)).enqueue_pending()
+    typer.echo(f"queued account checks: {checks.queued}")
+    _drain_jobs(adapter, settings)
+    with session_scope() as session:
+        invites = InviteService(session, adapter, QueueService(session, settings), settings).enqueue_pending()
+    typer.echo(f"queued direct invites: {invites.queued_direct}")
+    _drain_jobs(adapter, settings)
+    typer.echo("invite run finished. Use: python -m bale_inviter report")
+
+
+def _drain_jobs(adapter, settings) -> None:
+    while True:
+        with session_scope() as session:
+            job_worker = build_worker(session, adapter, settings, interval_seconds=0)
+            processed = asyncio.run(job_worker.process_one())
+        if not processed:
+            return
+        typer.echo("processed 1 job")
+        time.sleep(max(0, settings.invite_interval))
 
 
 @app.command("prepare-group")
@@ -161,8 +226,8 @@ def enqueue_invites(
             ]
         )
     )
-    typer.echo("Contacts without bale_user_id cannot be invited by phone via Bot API.")
-    typer.echo("They must start the bot or share their contact, then run-bot will invite them.")
+    typer.echo("Contacts without a Telegram account are skipped.")
+    typer.echo("Run enqueue-account-checks first, or use run-invites.")
 
 
 @app.command("worker")

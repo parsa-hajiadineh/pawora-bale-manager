@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     bale_adapter: str = "http"
     group_id: str = ""
     invite_link: str = ""
-    invite_interval: int = 5
+    invite_interval: int = 20
     worker_poll_seconds: int = 2
     max_retries: int = 3
     job_retry_delay_seconds: int = 60
@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     log_dir: str = "./logs"
     invite_strategy: str = "auto"
     auto_invite_on_start: bool = True
+    messenger_platform: str = "telegram"
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
+    telegram_phone: str = ""
+    telegram_session_path: str = "./data/telegram.session"
     invite_message: str = (
         "سلام همکار گرامی، برای عضویت در گروه از لینک زیر استفاده کنید:\n{invite_link}"
     )

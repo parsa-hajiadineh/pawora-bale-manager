@@ -14,9 +14,13 @@ build/
 .coverage
 htmlcov/
 
-# Local SQLite and runtime files
+# Local SQLite, Telegram session, and runtime files
 data/*.db
 data/*.db-*
+*.session
+*.session-journal
+data/*.session
+data/*.session-journal
 logs/*
 !logs/.gitkeep
 

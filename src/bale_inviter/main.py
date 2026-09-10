@@ -9,7 +9,7 @@ setup_logging(settings.log_level, settings.log_dir)
 
 app = FastAPI(
     title="Bale Inviter",
-    description="Phase 3: import contacts, check accounts, direct-invite or send group invite links.",
-    version="0.3.0",
+    description="Invite Excel contacts to a Telegram group by phone using a user session.",
+    version="0.4.0",
 )
 app.include_router(reporting_router)

@@ -128,7 +128,9 @@ def test_http_verify_credentials() -> None:
 
 def test_factory_requires_token_for_http() -> None:
     with pytest.raises(BaleConfigError):
-        create_bale_adapter(Settings.model_construct(bale_adapter="http", bale_bot_token=""))
+        create_bale_adapter(
+            Settings.model_construct(messenger_platform="http", bale_adapter="http", bale_bot_token="")
+        )
 
 
 def test_http_direct_invite_success() -> None:
