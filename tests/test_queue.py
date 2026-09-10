@@ -74,6 +74,17 @@ def test_retry_then_permanent_failure(session, settings) -> None:
     assert queue.claim_next() is None
 
 
+def test_mark_failure_uses_explicit_delay(session, settings) -> None:
+    contact = _add_contact(session, "8")
+    queue = QueueService(session, settings)
+    queue.enqueue_for_contact(JobType.DIRECT_INVITE, contact.id)
+    claimed = queue.claim_next()
+    assert claimed is not None
+    retried = queue.mark_failure(claimed.id, "flood", delay_seconds=0)
+    assert retried.status is JobStatus.RETRYING
+    assert queue.claim_next() is not None
+
+
 def test_delayed_job_is_not_claimed(session, settings) -> None:
     queue = QueueService(session, settings)
     queue.enqueue(

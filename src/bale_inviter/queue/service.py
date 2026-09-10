@@ -115,6 +115,7 @@ class QueueService:
         phone: str | None = None,
         *,
         retry: bool = True,
+        delay_seconds: int | None = None,
     ) -> JobView:
         job = self._require(job_id)
         now = utcnow()
@@ -123,7 +124,11 @@ class QueueService:
         job.last_error = safe_error
         job.updated_at = now
         if retry and job.attempts < job.max_attempts:
-            delay = job.delay_seconds or self.settings.job_retry_delay_seconds
+            delay = (
+                delay_seconds
+                if delay_seconds is not None
+                else (job.delay_seconds or self.settings.job_retry_delay_seconds)
+            )
             job.status = JobStatus.RETRYING
             job.scheduled_at = now + timedelta(seconds=delay)
             log_event(

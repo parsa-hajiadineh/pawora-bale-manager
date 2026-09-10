@@ -216,9 +216,10 @@ def _drain_jobs(adapter, settings) -> None:
         with session_scope() as session:
             job_worker = build_worker(session, adapter, settings, interval_seconds=0)
             processed = asyncio.run(job_worker.process_one())
+            remaining = job_worker.queue.jobs.count_active()
         if not processed:
             return
-        typer.echo("processed 1 job")
+        typer.echo(f"processed 1 job; remaining={remaining}")
         time.sleep(max(0, settings.invite_interval))
 
 

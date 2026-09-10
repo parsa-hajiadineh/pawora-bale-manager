@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 
 from sqlalchemy.orm import Session
 
-from bale_inviter.adapters.bale import BaleAdapter, RetryableBaleError
+from bale_inviter.adapters.bale import BaleAdapter, BaleConfigError, RetryableBaleError
 from bale_inviter.config import Settings, get_settings
 from bale_inviter.domain.enums import JobType
 from bale_inviter.logging_setup import log_event
@@ -66,7 +66,20 @@ class JobWorker:
             await handler(job)
             self.queue.mark_success(job.id)
         except RetryableBaleError as exc:
-            self.queue.mark_failure(job.id, str(exc))
+            wait = max(0, int(getattr(exc, "retry_after", None) or 0))
+            self.queue.mark_failure(job.id, str(exc), delay_seconds=0 if wait else None)
+            if wait:
+                log_event(
+                    logging.WARNING,
+                    f"flood wait {wait}s; pausing worker",
+                    operation=job.job_type.value,
+                    contact_id=job.contact_id,
+                    attempt_count=job.attempts,
+                    error=str(exc),
+                )
+                await asyncio.sleep(wait)
+        except BaleConfigError as exc:
+            self.queue.mark_failure(job.id, str(exc), retry=False)
         except Exception as exc:  # noqa: BLE001 - worker must isolate handler errors
             self.queue.mark_failure(job.id, str(exc))
         return True

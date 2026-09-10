@@ -188,6 +188,14 @@ class JobRepository:
         )
         return self.session.scalars(stmt).first()
 
+    def count_active(self) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count()).select_from(Job).where(Job.status.in_(ACTIVE_JOB_STATUSES))
+            )
+            or 0
+        )
+
     def add(self, job: Job) -> Job:
         self.session.add(job)
         self.session.flush()

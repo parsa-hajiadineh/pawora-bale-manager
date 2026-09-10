@@ -297,7 +297,14 @@ class TelethonGateway:
         except UserNotParticipantError:
             return False
         except Exception as exc:
-            _raise_telegram(exc)
+            name = type(exc).__name__
+            if name == "FloodWaitError" or getattr(exc, "seconds", None):
+                _raise_telegram(exc)
+            log_event(
+                logging.WARNING,
+                f"join check unknown name={name}",
+                operation="CHECK_JOIN_STATUS",
+            )
             return None
 
 
@@ -314,7 +321,7 @@ def _raise_telegram(exc: Exception) -> None:
     wait = getattr(exc, "seconds", None)
     if name == "FloodWaitError" or "wait of" in detail.lower() or wait:
         seconds = int(wait or 60)
-        raise RetryableBaleError(f"Telegram flood wait {seconds}s") from exc
+        raise RetryableBaleError(f"Telegram flood wait {seconds}s", retry_after=seconds) from exc
     if name in {"AuthKeyUnregisteredError", "SessionRevokedError"}:
         raise BaleConfigError("Telegram session expired. Run telegram-login again.") from exc
     raise RuntimeError(f"{name}: {detail}") from exc

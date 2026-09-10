@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from bale_inviter.adapters.bale import BaleAccountCheckResult, RetryableBaleError, SharedContactUpdate
+from bale_inviter.adapters.bale import BaleAccountCheckResult, BaleConfigError, RetryableBaleError, SharedContactUpdate
 from bale_inviter.adapters.fake import FakeBaleAdapter
 from bale_inviter.database.models import Contact
 from bale_inviter.domain.enums import BaleAccountStatus, JobStatus, JobType
@@ -126,6 +126,43 @@ def test_retryable_error_keeps_job_retrying(session, settings) -> None:
     asyncio.run(worker.process_one())
     session.refresh(contact)
     assert contact.bale_account_status is BaleAccountStatus.HAS_ACCOUNT
+
+
+def test_expired_session_fails_job_without_retry(session, settings) -> None:
+    contact = _add_contact(session, "8", user_id="88")
+
+    class DeadAdapter(FakeBaleAdapter):
+        async def check_account(self, phone: str, user_id: str | None = None) -> BaleAccountCheckResult:
+            raise BaleConfigError("Telegram session expired")
+
+    queue = QueueService(session, settings)
+    queue.enqueue_for_contact(JobType.CHECK_BALE_ACCOUNT, contact.id)
+    worker = build_account_check_worker(session, DeadAdapter(), settings, interval_seconds=0)
+    asyncio.run(worker.process_one())
+    job = queue.jobs.list_by_type(JobType.CHECK_BALE_ACCOUNT)[0]
+    assert job.status is JobStatus.FAILED
+
+
+def test_worker_pauses_for_flood_wait(session, settings, monkeypatch) -> None:
+    contact = _add_contact(session, "9", user_id="99")
+    slept: list[int] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(int(seconds))
+
+    monkeypatch.setattr("bale_inviter.queue.worker.asyncio.sleep", fake_sleep)
+
+    class FloodAdapter(FakeBaleAdapter):
+        async def check_account(self, phone: str, user_id: str | None = None) -> BaleAccountCheckResult:
+            raise RetryableBaleError("Telegram flood wait 15s", retry_after=15)
+
+    queue = QueueService(session, settings)
+    queue.enqueue_for_contact(JobType.CHECK_BALE_ACCOUNT, contact.id)
+    worker = build_account_check_worker(session, FloodAdapter(), settings, interval_seconds=0)
+    asyncio.run(worker.process_one())
+    job = queue.jobs.list_by_type(JobType.CHECK_BALE_ACCOUNT)[0]
+    assert job.status is JobStatus.RETRYING
+    assert slept == [15]
 
 
 def test_sync_shared_contacts_matches_phone(session, settings) -> None:

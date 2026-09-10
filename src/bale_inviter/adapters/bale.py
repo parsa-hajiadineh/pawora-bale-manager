@@ -17,6 +17,10 @@ from bale_inviter.domain.phone import mask_phone
 class RetryableBaleError(RuntimeError):
     """Transient Bale/API failure; the job queue should retry."""
 
+    def __init__(self, message: str, retry_after: int | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
 
 class BaleConfigError(RuntimeError):
     """Missing or invalid Bale settings; do not retry as a job failure loop."""

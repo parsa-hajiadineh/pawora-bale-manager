@@ -64,6 +64,17 @@ def test_telegram_retryable_invite() -> None:
         asyncio.run(adapter.direct_invite("+989121234567", "-1001", "777"))
 
 
+def test_flood_wait_error_carries_retry_after() -> None:
+    from bale_inviter.adapters.telegram import _raise_telegram
+
+    class FloodWaitError(Exception):
+        seconds = 42
+
+    with pytest.raises(RetryableBaleError) as caught:
+        _raise_telegram(FloodWaitError("A wait of 42 seconds is required"))
+    assert caught.value.retry_after == 42
+
+
 def test_factory_telegram_requires_api_keys() -> None:
     with pytest.raises(BaleConfigError):
         create_bale_adapter(
